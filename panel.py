@@ -2,7 +2,6 @@ import base64
 from difflib import SequenceMatcher
 from datetime import datetime, timedelta, timezone
 from html import escape
-import hmac
 from io import BytesIO
 import json
 import math
@@ -640,36 +639,6 @@ def configured_secret(name):
         return ""
 
 
-def access_password(name, fallback):
-    try:
-        value = str(st.secrets.get(name, "") or "").strip()
-    except StreamlitSecretNotFoundError:
-        value = ""
-    return value or fallback
-
-
-def handle_visitor_login():
-    entered = st.session_state.get("visitor_password_input", "")
-    expected = access_password("GIRIS_SIFRESI", "ihtiyar2026")
-    authenticated = hmac.compare_digest(
-        str(entered).encode("utf-8"), expected.encode("utf-8")
-    )
-    st.session_state["visitor_authenticated"] = authenticated
-    st.session_state["visitor_login_failed"] = not authenticated
-    st.session_state["visitor_password_input"] = ""
-
-
-def handle_admin_login():
-    entered = st.session_state.get("admin_password_input", "")
-    expected = access_password("ADMIN_SIFRESI", "patron2026")
-    authenticated = hmac.compare_digest(
-        str(entered).encode("utf-8"), expected.encode("utf-8")
-    )
-    st.session_state["admin_authenticated"] = authenticated
-    st.session_state["admin_login_failed"] = not authenticated
-    st.session_state["admin_password_input"] = ""
-
-
 def run_update_pipeline():
     environment = os.environ.copy()
     for secret_name in API_SECRET_NAMES:
@@ -987,6 +956,14 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="auto",
 )
+
+if "giris_ok" not in st.session_state:
+    giris_parolasi = st.text_input("Giriş Parolası", type="password")
+    if st.button("Giriş Yap"):
+        if giris_parolasi.strip().lower() == "ihtiyarpeek":
+            st.session_state["giris_ok"] = True
+            st.rerun()
+    st.stop()
 
 st.iframe(
     """
@@ -1517,24 +1494,6 @@ st.iframe(
     height=1,
 )
 
-if not st.session_state.get("visitor_authenticated", False):
-    st.title("İ H T İ Y A R Maç Analiz Paneli")
-    st.caption("Devam etmek için giriş parolasını yazın.")
-    with st.form("visitor-login-form", clear_on_submit=True):
-        st.text_input(
-            "İhtiyar heyetine giriş parolası nedir?",
-            type="password",
-            key="visitor_password_input",
-        )
-        st.form_submit_button("Giriş Yap", on_click=handle_visitor_login)
-    if st.session_state.get("visitor_login_failed", False):
-        st.error("Giriş parolası hatalı.")
-    st.caption(
-        "Üretim ortamında GIRIS_SIFRESI ve ADMIN_SIFRESI değerlerini "
-        "Streamlit Secrets içinde tanımlayın."
-    )
-    st.stop()
-
 st.title("İ H T İ Y A R Maç Analiz Paneli")
 st.caption(
     "Lig verileri, istatistiksel etiketler ve 0–6 gol Poisson model olasılıkları."
@@ -1550,43 +1509,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-if st.session_state.get("admin_authenticated", False):
-    if st.button(
-        "Verileri Şimdi Güncelle",
-        type="primary",
-        width="stretch",
-        key="run-data-update",
-    ):
-        if run_update_pipeline():
-            st.cache_data.clear()
-            st.session_state["data_update_success"] = True
-            st.rerun()
-
-if st.session_state.pop("data_update_success", False):
-    st.success("Veriler, rapor ve grafik güncellendi.")
-
 with st.sidebar:
-    st.subheader("Yönetici Girişi")
-    if not st.session_state.get("admin_authenticated", False):
-        with st.form("admin-login-form", clear_on_submit=True):
-            st.text_input(
-                "Yönetici parolası",
-                type="password",
-                key="admin_password_input",
-            )
-            st.form_submit_button("Yönetici Girişi", on_click=handle_admin_login)
-        if st.session_state.get("admin_login_failed", False):
-            st.error("Yönetici parolası hatalı.")
-    else:
-        st.success("Yönetici oturumu açık.")
-        if st.button(
-            "Yönetici oturumunu kapat",
-            width="stretch",
-            key="admin-logout",
-        ):
-            st.session_state["admin_authenticated"] = False
-            st.rerun()
-
     st.divider()
     st.subheader("Veri kaynağı")
     st.caption("haftalik_analiz_raporu.xlsx")
@@ -1594,11 +1517,6 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
     st.caption("Önbellek en fazla 60 saniyede bir yenilenir.")
-    if st.button("Oturumu kapat", width="stretch", key="visitor-logout"):
-        st.session_state["visitor_authenticated"] = False
-        st.session_state["admin_authenticated"] = False
-        st.session_state.pop("data_update_success", None)
-        st.rerun()
 
 try:
     report = load_report()
@@ -2068,3 +1986,26 @@ with league_tab:
 with leaders_tab:
     st.subheader("İstatistik Liderleri")
     render_leaderboards(league_summary, team_statistics, match_data_error)
+
+st.divider()
+admin_column, _ = st.columns([1, 3])
+with admin_column:
+    admin_password = st.text_input(
+        "Yönetici parolası",
+        type="password",
+        key="admin_update_password",
+    )
+    if admin_password.strip().lower() == "do258025":
+        if st.button(
+            "Verileri Şimdi Güncelle",
+            type="primary",
+            width="stretch",
+            key="run-data-update",
+        ):
+            if run_update_pipeline():
+                st.cache_data.clear()
+                st.session_state["data_update_success"] = True
+                st.rerun()
+
+if st.session_state.pop("data_update_success", False):
+    st.success("Veriler, rapor ve grafik güncellendi.")
