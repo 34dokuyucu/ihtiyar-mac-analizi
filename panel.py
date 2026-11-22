@@ -1513,10 +1513,6 @@ with st.sidebar:
     st.divider()
     st.subheader("Veri kaynağı")
     st.caption("haftalik_analiz_raporu.xlsx")
-    if st.button("Verileri yeniden yükle", width="stretch"):
-        st.cache_data.clear()
-        st.rerun()
-    st.caption("Önbellek en fazla 60 saniyede bir yenilenir.")
 
 try:
     report = load_report()
