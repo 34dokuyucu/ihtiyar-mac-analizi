@@ -1,0 +1,9 @@
+pandas
+requests
+openpyxl
+scipy
+streamlit
+matplotlib
+Pillow
+beautifulsoup4
+lxml
