@@ -1385,6 +1385,16 @@ st.markdown(
     [data-testid="stExpander"] *, .stExpander * {
         color: #F8FAFC !important;
     }
+    [data-baseweb="tooltip"],
+    [data-baseweb="tooltip"] > div,
+    [role="tooltip"] {
+        border: 1px solid #10B981 !important;
+        background-color: #0F172A !important;
+        color: #F8FAFC !important;
+    }
+    [data-baseweb="tooltip"] *, [role="tooltip"] * {
+        color: #F8FAFC !important;
+    }
     </style>
     """.replace("__COVER_DATA_URI__", COVER_DATA_URI),
     unsafe_allow_html=True,
