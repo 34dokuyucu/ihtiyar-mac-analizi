@@ -18,6 +18,35 @@ from PIL import Image
 from streamlit.errors import StreamlitSecretNotFoundError
 
 
+INFO_BOX_BORDER_COLORS = {
+    "info": "#38BDF8",
+    "success": "#10B981",
+    "warning": "#F59E0B",
+    "error": "#EF4444",
+}
+
+
+def bilgi_kutusu(metin, tip="info"):
+    border_color = INFO_BOX_BORDER_COLORS.get(tip)
+    if border_color is None:
+        raise ValueError(f"Geçersiz bilgi kutusu tipi: {tip}")
+
+    st.markdown(
+        f"""
+        <div role="alert" style="
+            background-color: #0F172A !important;
+            color: #F8FAFC !important;
+            border: 1px solid {border_color} !important;
+            border-radius: 12px;
+            padding: 0.85rem 1rem;
+            margin: 0.5rem 0;
+            white-space: pre-wrap;
+        ">{escape(str(metin))}</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 BASE_DIR = Path(__file__).resolve().parent
 COVER_PATH = BASE_DIR / "kapak.png"
 
@@ -611,7 +640,9 @@ def render_match_details(match):
                 unsafe_allow_html=True,
             )
         else:
-            st.info("Bu iki takımın maç öncesine ait geçmiş karşılaşması bulunamadı.")
+            bilgi_kutusu(
+                "Bu iki takımın maç öncesine ait geçmiş karşılaşması bulunamadı."
+            )
         api_status = match.get("H2H_API_Durumu")
         if pd.notna(api_status) and str(api_status).strip():
             st.caption(str(api_status))
@@ -972,7 +1003,7 @@ def run_update_pipeline():
             script_path = BASE_DIR / script_name
             if not script_path.is_file():
                 message = f"Güncelleme betiği bulunamadı: {script_path}"
-                st.error(message)
+                bilgi_kutusu(message, "error")
                 status.update(label="Veri güncellemesi başarısız.", state="error")
                 return False
 
@@ -988,16 +1019,20 @@ def run_update_pipeline():
                     check=False,
                 )
             except OSError as exc:
-                st.error(f"{script_name} başlatılamadı: {exc}")
+                bilgi_kutusu(
+                    f"{script_name} başlatılamadı: {exc}",
+                    "error",
+                )
                 status.update(label="Veri güncellemesi başarısız.", state="error")
                 return False
 
             if result.stdout.strip():
                 st.code(result.stdout[-12000:], language="text")
             if result.returncode != 0:
-                st.error(
+                bilgi_kutusu(
                     f"{script_name} başarısız oldu (çıkış kodu "
-                    f"{result.returncode})."
+                    f"{result.returncode}).",
+                    "error",
                 )
                 if result.stderr.strip():
                     st.code(result.stderr[-12000:], language="text")
@@ -1066,7 +1101,10 @@ def render_leaderboard_card(title, entries):
 
 def render_leaderboards(league_summary, team_statistics, match_data_error=None):
     if match_data_error:
-        st.warning(f"Takım liderleri için maç verisi kullanılamıyor: {match_data_error}")
+        bilgi_kutusu(
+            f"Takım liderleri için maç verisi kullanılamıyor: {match_data_error}",
+            "warning",
+        )
 
     eligible_leagues = league_summary.copy()
     eligible_leagues["Oynanan Mac"] = pd.to_numeric(
@@ -1358,6 +1396,11 @@ st.markdown(
     [data-testid="stAlert"] svg {
         color: #F8FAFC !important;
     }
+    div[data-testid="stAlert"], div[role="alert"], .stAlert,
+    [data-testid="stToast"] {
+        background-color: #0F172A !important;
+        color: #F8FAFC !important;
+    }
     [data-testid="stAlert"], .stAlert {
         background-color: #0F172A !important;
         color: #F8FAFC !important;
@@ -1418,7 +1461,7 @@ if "yetki" not in st.session_state:
                     st.session_state["yetki"] = "admin"
                     st.rerun()
                 else:
-                    st.error("Hatalı parola!")
+                    bilgi_kutusu("Hatalı parola!", "error")
     st.stop()
 
 if "manuel_kupon" not in st.session_state:
@@ -2084,7 +2127,7 @@ if yetki == "admin":
             st.session_state.pop("data_update_success", None)
             st.rerun()
     if st.session_state.pop("data_update_success", False):
-        st.success("Veriler, rapor ve grafik güncellendi.")
+        bilgi_kutusu("Veriler, rapor ve grafik güncellendi.", "success")
 else:
     view_mode = "Mobil Kartlar"
     st.session_state["match_view_mode"] = view_mode
@@ -2111,13 +2154,13 @@ with st.sidebar:
 try:
     report = load_report()
 except (FileNotFoundError, ValueError) as exc:
-    st.error(str(exc))
+    bilgi_kutusu(str(exc), "error")
     st.stop()
 
 try:
     market_odds = load_odds()
 except ValueError as exc:
-    st.error(str(exc))
+    bilgi_kutusu(str(exc), "error")
     st.stop()
 
 match_data_error = None
@@ -2181,10 +2224,15 @@ with st.container(border=True):
         if isinstance(selected_dates, (tuple, list)) and len(selected_dates) == 2:
             date_start, date_end = selected_dates
             if date_start > date_end:
-                st.warning("Başlangıç tarihi bitiş tarihinden sonra olamaz.")
+                bilgi_kutusu(
+                    "Başlangıç tarihi bitiş tarihinden sonra olamaz.",
+                    "warning",
+                )
                 date_range_ready = False
         else:
-            st.info("Filtreyi uygulamak için başlangıç ve bitiş tarihini seçin.")
+            bilgi_kutusu(
+                "Filtreyi uygulamak için başlangıç ve bitiş tarihini seçin."
+            )
             date_range_ready = False
 
 if date_range_ready:
@@ -2216,9 +2264,9 @@ featured_tab, comparison_tab, coupon_tab, standings_tab, league_tab, leaders_tab
 with featured_tab:
     st.subheader("Öne Çıkan Maçlar")
     if featured.empty:
-        st.info("Rapor dosyasında öne çıkan maç bulunmuyor.")
+        bilgi_kutusu("Rapor dosyasında öne çıkan maç bulunmuyor.")
     elif filtered_featured.empty:
-        st.info("Seçilen tarih aralığında öne çıkan maç bulunmuyor.")
+        bilgi_kutusu("Seçilen tarih aralığında öne çıkan maç bulunmuyor.")
     else:
         league_options = sorted(filtered_featured["Lig"].dropna().astype(str).unique())
         label_options = sorted(
@@ -2256,7 +2304,7 @@ with featured_tab:
             )
         ]
         if filtered.empty:
-            st.info("Seçilen filtrelerle eşleşen maç yok.")
+            bilgi_kutusu("Seçilen filtrelerle eşleşen maç yok.")
         else:
             st.caption(f"Filtrelere uyan maç sayısı: {len(filtered)}")
             columns = [
@@ -2341,9 +2389,9 @@ with comparison_tab:
         "ve bahis önerisi değildir."
     )
     if upcoming.empty:
-        st.info("Karşılaştırma için yaklaşan maç bulunmuyor.")
+        bilgi_kutusu("Karşılaştırma için yaklaşan maç bulunmuyor.")
     elif filtered_upcoming.empty:
-        st.info("Seçilen tarih aralığında yaklaşan maç bulunmuyor.")
+        bilgi_kutusu("Seçilen tarih aralığında yaklaşan maç bulunmuyor.")
     else:
         match_options = list(range(len(filtered_upcoming)))
         selected_match_index = st.selectbox(
@@ -2366,15 +2414,16 @@ with comparison_tab:
             selected_match, market_odds
         )
         if market_match is None:
-            st.info(
+            bilgi_kutusu(
                 "Bu maç için otomatik piyasa eşleşmesi bulunamadı. "
                 "Oran kutularına değerleri elle girebilirsiniz."
             )
         else:
-            st.success(
+            bilgi_kutusu(
                 "Takım adları eşleşti "
                 f"(benzerlik: {match_similarity:.1%}); oranlar büro "
-                "ortalamalarıyla dolduruldu. Kutuları değiştirebilirsiniz."
+                "ortalamalarıyla dolduruldu. Kutuları değiştirebilirsiniz.",
+                "success",
             )
 
         odds_fields = [
@@ -2443,7 +2492,7 @@ with comparison_tab:
             f"{difference:+.2f} yüzde puan",
             delta_color="off",
         )
-        st.info(
+        bilgi_kutusu(
             f"Model xG/Lambda: ev sahibi {selected_match['Ev_xG_Lambda']:.2f} — "
             f"deplasman {selected_match['Dep_xG_Lambda']:.2f}; "
             f"en olası skor {selected_match['En_Olasi_Skor']}."
@@ -2456,14 +2505,16 @@ with comparison_tab:
             "farkı en az +5 yüzde puan olan sonuçlar listelenir."
         )
         if market_odds.empty:
-            st.info("piyasa_oranlari.xlsx bulunamadı veya henüz oran içermiyor.")
+            bilgi_kutusu(
+                "piyasa_oranlari.xlsx bulunamadı veya henüz oran içermiyor."
+            )
         else:
             difference_table, matched_count = build_market_difference_table(
                 filtered_upcoming, market_odds
             )
             st.metric("Piyasa oranıyla eşleşen maç", matched_count)
             if difference_table.empty:
-                st.info("+5 yüzde puan eşiğini geçen eşleşme bulunamadı.")
+                bilgi_kutusu("+5 yüzde puan eşiğini geçen eşleşme bulunamadı.")
             else:
                 display = percent_display(
                     difference_table,
@@ -2556,8 +2607,9 @@ with coupon_tab:
     if st.session_state.get("otomatik_kupon_generated", False):
         requested_count = st.session_state["otomatik_kupon_requested"]
         if not automatic_coupon:
-            st.warning(
-                "Seçilen tarih aralığı ve risk profiline uygun oranlı maç bulunamadı."
+            bilgi_kutusu(
+                "Seçilen tarih aralığı ve risk profiline uygun oranlı maç bulunamadı.",
+                "warning",
             )
         else:
             st.caption(
@@ -2599,7 +2651,7 @@ with coupon_tab:
     coupon = st.session_state["manuel_kupon"]
     total_odds, combined_probability = calculate_coupon_totals(coupon)
     if not coupon:
-        st.info("Henüz manuel kupona maç eklenmedi.")
+        bilgi_kutusu("Henüz manuel kupona maç eklenmedi.")
     else:
         for index, entry in enumerate(coupon):
             item_columns = st.columns([8, 1])
@@ -2642,7 +2694,7 @@ with coupon_tab:
 with standings_tab:
     st.subheader("Puan Durumu")
     if standings.empty:
-        st.info("Puan durumu verisi bulunmuyor.")
+        bilgi_kutusu("Puan durumu verisi bulunmuyor.")
     else:
         league_options = sorted(standings["Lig"].dropna().astype(str).unique())
         selected_league = st.selectbox(
@@ -2672,7 +2724,7 @@ with standings_tab:
 with league_tab:
     st.subheader("Lig İstatistikleri")
     if league_summary.empty:
-        st.info("Lig özeti bulunmuyor.")
+        bilgi_kutusu("Lig özeti bulunmuyor.")
     else:
         summary_display = percent_display(
             league_summary,
@@ -2712,7 +2764,10 @@ with league_tab:
                 width="stretch",
             )
         else:
-            st.warning(f"Lig karşılaştırma grafiği bulunamadı: {CHART_PATH}")
+            bilgi_kutusu(
+                f"Lig karşılaştırma grafiği bulunamadı: {CHART_PATH}",
+                "warning",
+            )
 
 with leaders_tab:
     st.subheader("İstatistik Liderleri")
