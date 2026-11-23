@@ -77,6 +77,14 @@ OUTCOME_COLUMNS = {
     "2.5 Üst": ("Ust_25_%", "Ort_Ust25"),
     "Karşılıklı Gol (KG Var)": ("KG_Var_%", None),
 }
+CARD_COUPON_OPTIONS = [
+    ("MS1", "MS1_%", "Ort_MS1"),
+    ("MSX", "MSX_%", "Ort_MSX"),
+    ("MS2", "MS2_%", "Ort_MS2"),
+    ("2.5 Üst", "Ust_25_%", "Ort_Ust25"),
+    ("KG Var", "KG_Var_%", None),
+    ("2.5 Üst & KG Var", JOINT_OVER_25_BOTH_SCORE_COLUMN, None),
+]
 LEAGUE_NAMES = {
     "TSL": "Türkiye Süper Ligi",
     "T1L": "Türkiye 1. Ligi",
@@ -537,12 +545,61 @@ def render_match_details(match):
         )
 
 
-def render_match_cards(matches):
+def upsert_manual_coupon_selection(
+    match, selection, probability, odds_column, market_match
+):
+    model_probability = float(probability) * 100
+    if not math.isfinite(model_probability) or not 0 <= model_probability <= 100:
+        return None
+
+    match_name = f"{match.get('Ev Sahibi', '—')} - {match.get('Deplasman', '—')}"
+    league = league_label(match.get("Lig", ""))
+    match_date = format_match_date(match.get("Tarih (UTC)"))
+    market_price = None
+    if market_match is not None and odds_column is not None:
+        value = pd.to_numeric(
+            pd.Series([market_match.get(odds_column)]), errors="coerce"
+        ).iloc[0]
+        if pd.notna(value) and math.isfinite(float(value)) and value > 0:
+            market_price = float(value)
+
+    entry = {
+        "Maç Adı": match_name,
+        "Lig": league,
+        "Tarih": match_date,
+        "Seçilen Tercih": selection,
+        "Model Olasılığı %": model_probability,
+        "Piyasa Oranı": market_price,
+    }
+    coupon = st.session_state["manuel_kupon"]
+    identity = (match_name, league, match_date)
+    existing_index = next(
+        (
+            index
+            for index, current in enumerate(coupon)
+            if (
+                current.get("Maç Adı"),
+                current.get("Lig"),
+                current.get("Tarih"),
+            )
+            == identity
+        ),
+        None,
+    )
+    if existing_index is None:
+        coupon.append(entry)
+        return "eklendi"
+
+    coupon[existing_index] = entry
+    return "güncellendi"
+
+
+def render_match_cards(matches, market_odds, key_prefix):
     rows = list(matches.iterrows())
     for start in range(0, len(rows), 3):
         batch = rows[start : start + 3]
         columns = st.columns(3)
-        for column, (_, match) in zip(columns, batch):
+        for column, (match_index, match) in zip(columns, batch):
             label_value = match.get("Istatistiksel_Etiketler")
             labels = (
                 [
@@ -558,24 +615,6 @@ def render_match_cards(matches):
                 for label in labels
             ) or '<span class="match-tag match-tag-muted">Etiket yok</span>'
 
-            probabilities = [
-                ("MS1", match.get("MS1_%")),
-                ("MSX", match.get("MSX_%")),
-                ("MS2", match.get("MS2_%")),
-                ("2.5 Üst", match.get("Ust_25_%")),
-                ("KG Var", match.get("KG_Var_%")),
-                (
-                    "2.5 Üst &amp; KG Var",
-                    match.get(JOINT_OVER_25_BOTH_SCORE_COLUMN),
-                ),
-            ]
-            probability_markup = "".join(
-                f'<div class="probability-box prob-{probability_level(value, fraction=True) or "na"}">'
-                f"<span>{label}</span>"
-                f"<strong>{format_probability(value)}</strong>"
-                "</div>"
-                for label, value in probabilities
-            )
             home_xg = format_decimal(match.get("Ev_xG_Lambda"))
             away_xg = format_decimal(match.get("Dep_xG_Lambda"))
             card = (
@@ -595,11 +634,54 @@ def render_match_cards(matches):
                 f"<span>DEP Gol Ort. (xG) <strong>{away_xg}</strong></span>"
                 f"<span>En olası skor <strong>{escape(str(match.get('En_Olasi_Skor', '—')))}</strong></span>"
                 "</div>"
-                f'<div class="probability-grid">{probability_markup}</div>'
                 "</article>"
             )
             with column:
                 st.markdown(card, unsafe_allow_html=True)
+                market_match, _ = find_market_odds(match, market_odds)
+                button_columns = st.columns(2)
+                for choice_index, (selection, probability_column, odds_column) in enumerate(
+                    CARD_COUPON_OPTIONS
+                ):
+                    probability = match.get(probability_column)
+                    try:
+                        probability_fraction = float(probability)
+                    except (TypeError, ValueError):
+                        probability_fraction = float("nan")
+                    valid_probability = (
+                        math.isfinite(probability_fraction)
+                        and 0 <= probability_fraction <= 1
+                    )
+                    level = (
+                        probability_level(probability_fraction, fraction=True)
+                        if valid_probability
+                        else None
+                    )
+                    indicator = {
+                        "high": "🟢",
+                        "medium": "🟡",
+                        "low": "🔴",
+                    }.get(level, "⚪")
+                    with button_columns[choice_index % 2]:
+                        if st.button(
+                            f"{indicator} {selection} · {format_probability(probability)}",
+                            key=f"coupon-{key_prefix}-{match_index}-{choice_index}",
+                            help="Tercihi manuel kupona ekler.",
+                            disabled=not valid_probability,
+                            width="stretch",
+                        ):
+                            action = upsert_manual_coupon_selection(
+                                match,
+                                selection,
+                                probability_fraction,
+                                odds_column,
+                                market_match,
+                            )
+                            if action is not None:
+                                st.toast(
+                                    f"{selection} tercihi {action}.",
+                                    icon="✅",
+                                )
                 render_match_details(match)
 
 
@@ -970,6 +1052,9 @@ if "yetki" not in st.session_state:
         else:
             st.error("Hatalı parola!")
     st.stop()
+
+if "manuel_kupon" not in st.session_state:
+    st.session_state["manuel_kupon"] = []
 
 st.iframe(
     """
@@ -1647,10 +1732,11 @@ metric_columns[2].metric(
     f"{filtered_upcoming['Lig'].nunique() if 'Lig' in filtered_upcoming else 0:,}",
 )
 
-featured_tab, comparison_tab, standings_tab, league_tab, leaders_tab = st.tabs(
+featured_tab, comparison_tab, coupon_tab, standings_tab, league_tab, leaders_tab = st.tabs(
     [
         "Öne Çıkan Maçlar",
         "Olasılık Karşılaştırma",
+        "Kupon & Kombinasyon Simülatörü",
         "Puan Durumu",
         "Lig İstatistikleri",
         "İstatistik Liderleri",
@@ -1761,7 +1847,9 @@ with featured_tab:
                     width="stretch",
                 )
             with st.container(key="featured-cards"):
-                render_match_cards(featured_with_joint)
+                render_match_cards(
+                    featured_with_joint, market_odds, key_prefix="featured"
+                )
 
 with comparison_tab:
     st.subheader("Model ve Piyasa Oranı Karşılaştırması")
@@ -1787,7 +1875,11 @@ with comparison_tab:
             filtered_upcoming.iloc[[selected_match_index]]
         )
         with st.container(key="comparison-selected-cards"):
-            render_match_cards(selected_match_with_joint)
+            render_match_cards(
+                selected_match_with_joint,
+                market_odds,
+                key_prefix="comparison",
+            )
         market_match, match_similarity = find_market_odds(
             selected_match, market_odds
         )
@@ -1936,6 +2028,93 @@ with comparison_tab:
                     )
                 with st.container(key="difference-cards"):
                     render_market_difference_cards(difference_table)
+
+with coupon_tab:
+    st.subheader("Seçtiğim Maçlar (Manuel Liste)")
+    st.caption(
+        "Bileşik olasılık maçların bağımsız olduğu varsayımıyla hesaplanır. "
+        "Toplam oran yalnızca tüm seçimlerde piyasa oranı varsa gösterilir."
+    )
+    coupon = st.session_state["manuel_kupon"]
+    if not coupon:
+        st.info("Henüz manuel kupona maç eklenmedi.")
+        combined_probability = None
+        total_odds = None
+    else:
+        model_probabilities = []
+        market_prices = []
+        complete_probabilities = True
+        complete_market_prices = True
+        for entry in coupon:
+            try:
+                probability = float(entry["Model Olasılığı %"])
+            except (KeyError, TypeError, ValueError):
+                complete_probabilities = False
+            else:
+                if math.isfinite(probability) and 0 <= probability <= 100:
+                    model_probabilities.append(probability / 100)
+                else:
+                    complete_probabilities = False
+
+            price = entry.get("Piyasa Oranı")
+            try:
+                price = float(price)
+            except (TypeError, ValueError):
+                complete_market_prices = False
+            else:
+                if math.isfinite(price) and price > 0:
+                    market_prices.append(price)
+                else:
+                    complete_market_prices = False
+
+        combined_probability = (
+            math.prod(model_probabilities) * 100
+            if complete_probabilities and len(model_probabilities) == len(coupon)
+            else None
+        )
+        total_odds = (
+            math.prod(market_prices)
+            if complete_market_prices and len(market_prices) == len(coupon)
+            else None
+        )
+
+        for index, entry in enumerate(coupon):
+            item_columns = st.columns([8, 1])
+            with item_columns[0]:
+                price = entry.get("Piyasa Oranı")
+                price_label = f"{float(price):.2f}" if price is not None else "Yok"
+                st.markdown(
+                    f"**{escape(str(entry['Maç Adı']))}** · "
+                    f"{escape(str(entry['Lig']))} · "
+                    f"{escape(str(entry['Tarih']))}<br>"
+                    f"{escape(str(entry['Seçilen Tercih']))} · "
+                    f"Model: {float(entry['Model Olasılığı %']):.1f}% · "
+                    f"Piyasa oranı: {price_label}",
+                    unsafe_allow_html=True,
+                )
+            with item_columns[1]:
+                if st.button(
+                    "Çıkar",
+                    key=f"manual-coupon-remove-{index}",
+                ):
+                    del st.session_state["manuel_kupon"][index]
+                    st.rerun()
+
+        if st.button("Listeyi tamamen temizle", key="manual-coupon-clear"):
+            st.session_state["manuel_kupon"] = []
+            st.rerun()
+
+    totals = st.columns(2)
+    totals[0].metric(
+        "Toplam teorik oran",
+        f"{total_odds:.2f}" if total_odds is not None else "—",
+    )
+    totals[1].metric(
+        "Bileşik matematiksel olasılık",
+        f"{combined_probability:.2f}%"
+        if combined_probability is not None
+        else "—",
+    )
 
 with standings_tab:
     st.subheader("Puan Durumu")
