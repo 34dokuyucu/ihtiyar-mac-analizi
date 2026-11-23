@@ -87,7 +87,16 @@ UPCOMING_COLUMNS = [
     "MS2_%",
     "Ust_25_%",
     "KG_Var_%",
+    "MS1_ve_Ust25_%",
+    "MS2_ve_Ust25_%",
+    "MS1_ve_KG_Var_%",
+    "MS2_ve_KG_Var_%",
+    "Ust25_ve_KG_Var_%",
+    "Ust_25_KG_Var_%",
     "En_Olasi_Skor",
+    "Korner_Tahmini",
+    "Kart_Tahmini",
+    "Oyuncu_Tahmini",
     "H2H_Gecmis_JSON",
     "H2H_API_Durumu",
 ]
@@ -134,6 +143,12 @@ PERCENTAGE_COLUMNS = {
     "MS2_%",
     "Ust_25_%",
     "KG_Var_%",
+    "MS1_ve_Ust25_%",
+    "MS2_ve_Ust25_%",
+    "MS1_ve_KG_Var_%",
+    "MS2_ve_KG_Var_%",
+    "Ust25_ve_KG_Var_%",
+    "Ust_25_KG_Var_%",
     "Ev Sürpriz Yapma %",
     "Ev Sürpriz Yeme %",
     "Dep Sürpriz Yapma %",
@@ -856,6 +871,36 @@ def build_poisson_model(finished, league, home_team, away_team, kickoff):
         for home_score in range(1, 7)
         for away_score in range(1, 7)
     )
+    home_win_over_25 = sum(
+        score_matrix[home_score][away_score]
+        for home_score in range(7)
+        for away_score in range(7)
+        if home_score > away_score and home_score + away_score >= 3
+    )
+    away_win_over_25 = sum(
+        score_matrix[home_score][away_score]
+        for home_score in range(7)
+        for away_score in range(7)
+        if away_score > home_score and home_score + away_score >= 3
+    )
+    home_win_both_score = sum(
+        score_matrix[home_score][away_score]
+        for home_score in range(7)
+        for away_score in range(7)
+        if home_score > away_score and away_score >= 1
+    )
+    away_win_both_score = sum(
+        score_matrix[home_score][away_score]
+        for home_score in range(7)
+        for away_score in range(7)
+        if away_score > home_score and home_score >= 1
+    )
+    over_25_both_score = sum(
+        score_matrix[home_score][away_score]
+        for home_score in range(1, 7)
+        for away_score in range(1, 7)
+        if home_score + away_score >= 3
+    )
     most_likely_home, most_likely_away = max(
         (
             (home_score, away_score)
@@ -879,6 +924,12 @@ def build_poisson_model(finished, league, home_team, away_team, kickoff):
         "MS2_%": away_win,
         "Ust_25_%": over_25,
         "KG_Var_%": both_score,
+        "MS1_ve_Ust25_%": home_win_over_25,
+        "MS2_ve_Ust25_%": away_win_over_25,
+        "MS1_ve_KG_Var_%": home_win_both_score,
+        "MS2_ve_KG_Var_%": away_win_both_score,
+        "Ust25_ve_KG_Var_%": over_25_both_score,
+        "Ust_25_KG_Var_%": over_25_both_score,
         "En_Olasi_Skor": f"{most_likely_home}-{most_likely_away}",
     }
 
@@ -1013,6 +1064,9 @@ def build_upcoming_matches(data, finished, now, h2h_cache, api_key):
                 "H2H_Gecmis_JSON": json.dumps(
                     h2h_matches, ensure_ascii=False, default=str
                 ),
+                "Korner_Tahmini": "X",
+                "Kart_Tahmini": "X",
+                "Oyuncu_Tahmini": "X",
                 "H2H_API_Durumu": h2h_api_status,
             }
         )

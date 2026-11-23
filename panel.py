@@ -20,13 +20,19 @@ from streamlit.errors import StreamlitSecretNotFoundError
 
 BASE_DIR = Path(__file__).resolve().parent
 COVER_PATH = BASE_DIR / "kapak.png"
-with Image.open(COVER_PATH) as cover_image:
-    background_image = BytesIO()
-    cover_image.convert("RGB").save(
-        background_image, format="JPEG", quality=88, optimize=True
-    )
-COVER_BASE64 = base64.b64encode(background_image.getvalue()).decode("ascii")
-COVER_DATA_URI = f"data:image/jpeg;base64,{COVER_BASE64}"
+
+
+@st.cache_data(show_spinner=False)
+def load_cover_data_uri(image_path):
+    with Image.open(image_path) as cover_image:
+        background_image = BytesIO()
+        cover_image.convert("RGB").save(
+            background_image, format="JPEG", quality=88, optimize=True
+        )
+    cover_base64 = base64.b64encode(background_image.getvalue()).decode("ascii")
+    return f"data:image/jpeg;base64,{cover_base64}"
+
+
 REPORT_PATH = BASE_DIR / "haftalik_analiz_raporu.xlsx"
 MATCH_DATA_PATH = BASE_DIR / "api_tum_ligler.xlsx"
 CHART_PATH = BASE_DIR / "lig_karsilastirma.png"
@@ -54,16 +60,30 @@ MATCH_DATA_COLUMNS = [
     "EvGol",
     "DepGol",
 ]
-JOINT_OVER_25_BOTH_SCORE_COLUMN = "Ust_25_KG_Var_%"
+JOINT_OVER_25_BOTH_SCORE_COLUMN = "Ust25_ve_KG_Var_%"
+LEGACY_JOINT_OVER_25_BOTH_SCORE_COLUMN = "Ust_25_KG_Var_%"
 POISSON_PERCENT_COLUMNS = [
     "MS1_%",
     "MSX_%",
     "MS2_%",
     "Ust_25_%",
     "KG_Var_%",
+    "MS1_ve_Ust25_%",
+    "MS2_ve_Ust25_%",
+    "MS1_ve_KG_Var_%",
+    "MS2_ve_KG_Var_%",
     JOINT_OVER_25_BOTH_SCORE_COLUMN,
+    LEGACY_JOINT_OVER_25_BOTH_SCORE_COLUMN,
+]
+COMBINATION_PROBABILITY_OPTIONS = [
+    ("2.5 Üst & KG Var", JOINT_OVER_25_BOTH_SCORE_COLUMN),
+    ("MS1 & 2.5 Üst", "MS1_ve_Ust25_%"),
+    ("MS2 & 2.5 Üst", "MS2_ve_Ust25_%"),
+    ("MS1 & KG Var", "MS1_ve_KG_Var_%"),
+    ("MS2 & KG Var", "MS2_ve_KG_Var_%"),
 ]
 VIEW_OPTIONS = ["Mobil Kartlar", "Masaüstü Tablo"]
+MATCH_CARDS_PAGE_SIZE = 25
 DATE_FILTER_OPTIONS = [
     "Tümü",
     "Bugün",
@@ -84,6 +104,10 @@ CARD_COUPON_OPTIONS = [
     ("2.5 Üst", "Ust_25_%", "Ort_Ust25"),
     ("KG Var", "KG_Var_%", None),
     ("2.5 Üst & KG Var", JOINT_OVER_25_BOTH_SCORE_COLUMN, None),
+    ("MS1 & 2.5 Üst", "MS1_ve_Ust25_%", None),
+    ("MS2 & 2.5 Üst", "MS2_ve_Ust25_%", None),
+    ("MS1 & KG Var", "MS1_ve_KG_Var_%", None),
+    ("MS2 & KG Var", "MS2_ve_KG_Var_%", None),
 ]
 AUTO_RISK_PROFILES = {
     "Düşük Risk: 1.20 - 1.50 Oran": "low",
@@ -120,7 +144,12 @@ FEATURED_COLUMN_LABELS = {
     "MS2_%": "MS2 %",
     "Ust_25_%": "2.5 Üst %",
     "KG_Var_%": "KG Var %",
+    "MS1_ve_Ust25_%": "MS1 & 2.5 Üst %",
+    "MS2_ve_Ust25_%": "MS2 & 2.5 Üst %",
+    "MS1_ve_KG_Var_%": "MS1 & KG Var %",
+    "MS2_ve_KG_Var_%": "MS2 & KG Var %",
     JOINT_OVER_25_BOTH_SCORE_COLUMN: "2.5 Üst & KG Var %",
+    LEGACY_JOINT_OVER_25_BOTH_SCORE_COLUMN: "2.5 Üst & KG Var %",
     "En_Olasi_Skor": "En Olası Skor",
 }
 LEAGUE_SUMMARY_COLUMN_LABELS = {
@@ -363,12 +392,14 @@ def over_25_and_both_score_probability(home_lambda, away_lambda):
 
 def add_joint_probability_column(matches):
     result = matches.copy()
-    result[JOINT_OVER_25_BOTH_SCORE_COLUMN] = [
+    joint_probabilities = [
         over_25_and_both_score_probability(home_lambda, away_lambda)
         for home_lambda, away_lambda in zip(
             result["Ev_xG_Lambda"], result["Dep_xG_Lambda"]
         )
     ]
+    result[JOINT_OVER_25_BOTH_SCORE_COLUMN] = joint_probabilities
+    result[LEGACY_JOINT_OVER_25_BOTH_SCORE_COLUMN] = joint_probabilities
     return result
 
 
@@ -508,6 +539,46 @@ def render_match_details(match):
                         match.get(second_half_count_column),
                     ),
                 )
+
+        combination_cards = []
+        for label, probability_column in COMBINATION_PROBABILITY_OPTIONS:
+            probability = match.get(probability_column)
+            level = probability_level(probability, fraction=True) or "na"
+            combination_cards.append(
+                '<div class="probability-box prob-'
+                f'{level}"><span>{escape(label)}</span>'
+                f"<strong>{escape(format_probability(probability))}</strong></div>"
+            )
+        st.markdown("**Kombo Olasılıkları**")
+        st.markdown(
+            '<div class="probability-grid combo-probability-grid">'
+            + "".join(combination_cards)
+            + "</div>",
+            unsafe_allow_html=True,
+        )
+
+        prediction_cards = []
+        for label, prediction_column in (
+            ("Korner Tahmini", "Korner_Tahmini"),
+            ("Kart Tahmini", "Kart_Tahmini"),
+            ("Oyuncu Tahmini", "Oyuncu_Tahmini"),
+        ):
+            prediction = match.get(prediction_column, "X")
+            if prediction is None or pd.isna(prediction):
+                prediction = "X"
+            prediction_cards.append(
+                '<div class="probability-box prediction-unavailable" '
+                'aria-disabled="true">'
+                f"<span>{escape(label)}</span>"
+                f"<strong>{escape(str(prediction))}</strong></div>"
+            )
+        st.markdown("**API Tahmin Verisi**")
+        st.markdown(
+            '<div class="probability-grid prediction-grid">'
+            + "".join(prediction_cards)
+            + "</div>",
+            unsafe_allow_html=True,
+        )
 
         st.caption(
             "Sürpriz oranı, maç öncesi lig puanı/maç oranı daha düşük olan "
@@ -719,7 +790,12 @@ def build_auto_combination(matches, market_odds, match_count, risk_profile):
 
 
 def render_match_cards(matches, market_odds, key_prefix):
-    rows = list(matches.iterrows())
+    page_key = f"{key_prefix}-visible-match-count"
+    visible_count = int(
+        st.session_state.get(page_key, MATCH_CARDS_PAGE_SIZE)
+    )
+    visible_count = min(max(visible_count, MATCH_CARDS_PAGE_SIZE), len(matches))
+    rows = list(matches.iloc[:visible_count].iterrows())
     for start in range(0, len(rows), 3):
         batch = rows[start : start + 3]
         columns = st.columns(3)
@@ -808,10 +884,30 @@ def render_match_cards(matches, market_odds, key_prefix):
                                 )
                 render_match_details(match)
 
+    if len(matches) > visible_count:
+        st.caption(f"{visible_count:,} / {len(matches):,} maç gösteriliyor.")
+        if st.button(
+            "Daha Fazla Göster",
+            key=f"{key_prefix}-show-more-matches",
+        ):
+            st.session_state[page_key] = min(
+                visible_count + MATCH_CARDS_PAGE_SIZE,
+                len(matches),
+            )
+            st.rerun()
+
 
 def render_market_difference_cards(difference_table):
+    page_key = "difference-visible-match-count"
+    visible_count = int(
+        st.session_state.get(page_key, MATCH_CARDS_PAGE_SIZE)
+    )
+    visible_count = min(
+        max(visible_count, MATCH_CARDS_PAGE_SIZE),
+        len(difference_table),
+    )
     cards = []
-    for _, row in difference_table.iterrows():
+    for _, row in difference_table.iloc[:visible_count].iterrows():
         model_level = probability_level(row["Model Olasılığı (%)"]) or "na"
         market_level = (
             probability_level(row["Örtük Piyasa Olasılığı (%)"]) or "na"
@@ -832,6 +928,19 @@ def render_market_difference_cards(difference_table):
         '<div class="match-card-list">' + "".join(cards) + "</div>",
         unsafe_allow_html=True,
     )
+    if len(difference_table) > visible_count:
+        st.caption(
+            f"{visible_count:,} / {len(difference_table):,} maç gösteriliyor."
+        )
+        if st.button(
+            "Daha Fazla Göster",
+            key="difference-show-more-matches",
+        ):
+            st.session_state[page_key] = min(
+                visible_count + MATCH_CARDS_PAGE_SIZE,
+                len(difference_table),
+            )
+            st.rerun()
 
 
 def configured_secret(name):
@@ -1163,6 +1272,8 @@ st.set_page_config(
     initial_sidebar_state="auto",
 )
 
+COVER_DATA_URI = load_cover_data_uri(str(COVER_PATH))
+
 st.markdown(
     """
     <style>
@@ -1212,6 +1323,12 @@ st.markdown(
         box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
         backdrop-filter: blur(10px);
         -webkit-backdrop-filter: blur(10px);
+    }
+    @media (max-width: 768px) {
+        *, *::before, *::after {
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+        }
     }
     input, textarea, [data-baseweb="input"] input {
         border: 1px solid #10B981 !important;
@@ -1632,6 +1749,9 @@ st.markdown(
         gap: 0.5rem;
         margin-top: 0.75rem;
     }
+    .combo-probability-grid, .prediction-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
     .probability-box {
         min-width: 0;
         padding: 0.55rem 0.35rem;
@@ -1653,6 +1773,14 @@ st.markdown(
     .probability-box.prob-low {
         border-color: rgba(239, 68, 68, 0.38);
         background: rgba(239, 68, 68, 0.07);
+    }
+    .prediction-unavailable {
+        border-color: rgba(148, 163, 184, 0.3);
+        background: rgba(148, 163, 184, 0.08);
+        pointer-events: none;
+    }
+    .prediction-unavailable strong {
+        color: #CBD5E1 !important;
     }
     .probability-box span, .probability-box strong {
         display: block;
@@ -1925,8 +2053,9 @@ if yetki == "admin":
             width="stretch",
             key="run-data-update",
         ):
-            if run_update_pipeline():
-                st.cache_data.clear()
+            update_succeeded = run_update_pipeline()
+            st.cache_data.clear()
+            if update_succeeded:
                 st.session_state["data_update_success"] = True
                 st.rerun()
         view_mode = admin_controls[1].radio(
@@ -2129,6 +2258,10 @@ with featured_tab:
                 "MS2_%",
                 "Ust_25_%",
                 "KG_Var_%",
+                "MS1_ve_Ust25_%",
+                "MS2_ve_Ust25_%",
+                "MS1_ve_KG_Var_%",
+                "MS2_ve_KG_Var_%",
                 JOINT_OVER_25_BOTH_SCORE_COLUMN,
                 "En_Olasi_Skor",
             ]
@@ -2146,6 +2279,10 @@ with featured_tab:
                     "MS2 %",
                     "2.5 Üst %",
                     "KG Var %",
+                    "MS1 & 2.5 Üst %",
+                    "MS2 & 2.5 Üst %",
+                    "MS1 & KG Var %",
+                    "MS2 & KG Var %",
                     "2.5 Üst & KG Var %",
                 ],
             )
@@ -2160,6 +2297,10 @@ with featured_tab:
                                 "MS2 %",
                                 "2.5 Üst %",
                                 "KG Var %",
+                                "MS1 & 2.5 Üst %",
+                                "MS2 & 2.5 Üst %",
+                                "MS1 & KG Var %",
+                                "MS2 & KG Var %",
                                 "2.5 Üst & KG Var %",
                             ]
                         ),
