@@ -866,7 +866,6 @@ def render_match_cards(matches, market_odds, key_prefix):
                         if st.button(
                             f"{indicator} {selection} · {format_probability(probability)}",
                             key=f"coupon-{key_prefix}-{match_index}-{choice_index}",
-                            help="Tercihi manuel kupona ekler.",
                             disabled=not valid_probability,
                             width="stretch",
                         ):
@@ -1393,6 +1392,11 @@ st.markdown(
         color: #F8FAFC !important;
     }
     [data-baseweb="tooltip"] *, [role="tooltip"] * {
+        color: #F8FAFC !important;
+    }
+    [data-baseweb="popover"], [data-baseweb="popover"] *,
+    [data-baseweb="tooltip"], [data-baseweb="tooltip"] * {
+        background-color: #0F172A !important;
         color: #F8FAFC !important;
     }
     </style>
