@@ -957,12 +957,18 @@ st.set_page_config(
     initial_sidebar_state="auto",
 )
 
-if "giris_ok" not in st.session_state:
+if "yetki" not in st.session_state:
     giris_parolasi = st.text_input("Giriş Parolası", type="password")
     if st.button("Giriş Yap"):
-        if giris_parolasi.strip().lower() == "ihtiyarpeek":
-            st.session_state["giris_ok"] = True
+        entered_password = giris_parolasi.strip().lower()
+        if entered_password == "ihtiyarpeek":
+            st.session_state["yetki"] = "user"
             st.rerun()
+        elif entered_password == "do258025":
+            st.session_state["yetki"] = "admin"
+            st.rerun()
+        else:
+            st.error("Hatalı parola!")
     st.stop()
 
 st.iframe(
@@ -1983,25 +1989,18 @@ with leaders_tab:
     st.subheader("İstatistik Liderleri")
     render_leaderboards(league_summary, team_statistics, match_data_error)
 
-st.divider()
-admin_column, _ = st.columns([1, 3])
-with admin_column:
-    admin_password = st.text_input(
-        "Yönetici parolası",
-        type="password",
-        key="admin_update_password",
-    )
-    if admin_password.strip().lower() == "do258025":
-        if st.button(
-            "Verileri Şimdi Güncelle",
-            type="primary",
-            width="stretch",
-            key="run-data-update",
-        ):
-            if run_update_pipeline():
-                st.cache_data.clear()
-                st.session_state["data_update_success"] = True
-                st.rerun()
+if st.session_state.get("yetki") == "admin":
+    st.divider()
+    if st.button(
+        "Verileri Şimdi Güncelle",
+        type="primary",
+        width="stretch",
+        key="run-data-update",
+    ):
+        if run_update_pipeline():
+            st.cache_data.clear()
+            st.session_state["data_update_success"] = True
+            st.rerun()
 
-if st.session_state.pop("data_update_success", False):
-    st.success("Veriler, rapor ve grafik güncellendi.")
+    if st.session_state.pop("data_update_success", False):
+        st.success("Veriler, rapor ve grafik güncellendi.")
