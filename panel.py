@@ -1185,7 +1185,7 @@ st.markdown(
             linear-gradient(rgba(10, 14, 23, 0.68), rgba(10, 14, 23, 0.78)),
             var(--panel-cover-image);
         background-size: cover;
-        background-position: center center;
+        background-position: center top;
         background-repeat: no-repeat;
         background-attachment: fixed;
         content: "";
@@ -1204,7 +1204,7 @@ st.markdown(
         -webkit-backdrop-filter: blur(10px);
     }
     .st-key-login-card {
-        margin-top: 20vh;
+        margin-top: 48vh;
         padding: 1.5rem;
         border: 1px solid rgba(16, 185, 129, 0.55);
         border-radius: 18px;
@@ -1240,6 +1240,32 @@ st.markdown(
     [data-testid="stAlert"] [data-testid="stMarkdownContainer"],
     [data-testid="stAlert"] p,
     [data-testid="stAlert"] svg {
+        color: #F8FAFC !important;
+    }
+    [data-testid="stAlert"], .stAlert {
+        background-color: #0F172A !important;
+        color: #F8FAFC !important;
+    }
+    [data-testid="stAlert"] *, .stAlert * {
+        color: #F8FAFC !important;
+    }
+    [data-baseweb="select"] > div,
+    [data-baseweb="menu"], [data-baseweb="popover"],
+    [role="listbox"], [role="option"] {
+        background-color: #0F172A !important;
+        color: #F8FAFC !important;
+    }
+    [data-baseweb="select"] > div *,
+    [data-baseweb="menu"] *, [data-baseweb="popover"] *,
+    [role="listbox"] *, [role="option"] * {
+        color: #F8FAFC !important;
+    }
+    [data-testid="stExpander"], [data-testid="stExpander"] details,
+    .stExpander {
+        background-color: #0F172A !important;
+        color: #F8FAFC !important;
+    }
+    [data-testid="stExpander"] *, .stExpander * {
         color: #F8FAFC !important;
     }
     </style>
@@ -1328,7 +1354,7 @@ st.markdown(
             linear-gradient(rgba(10, 14, 23, 0.68), rgba(10, 14, 23, 0.78)),
             var(--panel-cover-image);
         background-size: cover;
-        background-position: center center;
+        background-position: center top;
         background-repeat: no-repeat;
         background-attachment: fixed;
         content: "";
@@ -1337,6 +1363,9 @@ st.markdown(
     .stApp > header, .stApp > div[data-testid="stAppViewContainer"] {
         position: relative;
         z-index: 1;
+    }
+    .block-container {
+        padding-top: 180px !important;
     }
     [data-testid="stHeader"] { background: transparent; }
     [data-testid="stSidebar"] {
@@ -1442,6 +1471,32 @@ st.markdown(
     [data-testid="stAlert"] [data-testid="stMarkdownContainer"],
     [data-testid="stAlert"] p,
     [data-testid="stAlert"] svg {
+        color: #F8FAFC !important;
+    }
+    [data-testid="stAlert"], .stAlert {
+        background-color: #0F172A !important;
+        color: #F8FAFC !important;
+    }
+    [data-testid="stAlert"] *, .stAlert * {
+        color: #F8FAFC !important;
+    }
+    [data-baseweb="select"] > div,
+    [data-baseweb="menu"], [data-baseweb="popover"],
+    [role="listbox"], [role="option"] {
+        background-color: #0F172A !important;
+        color: #F8FAFC !important;
+    }
+    [data-baseweb="select"] > div *,
+    [data-baseweb="menu"] *, [data-baseweb="popover"] *,
+    [role="listbox"] *, [role="option"] * {
+        color: #F8FAFC !important;
+    }
+    [data-testid="stExpander"], [data-testid="stExpander"] details,
+    .stExpander {
+        background-color: #0F172A !important;
+        color: #F8FAFC !important;
+    }
+    [data-testid="stExpander"] *, .stExpander * {
         color: #F8FAFC !important;
     }
     .match-card-list {
