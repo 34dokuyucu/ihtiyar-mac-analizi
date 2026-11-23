@@ -1585,7 +1585,40 @@ st.iframe(
     height=1,
 )
 
-st.title("İ H T İ Y A R Maç Analiz Paneli")
+st.markdown(
+    """
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@800;900&display=swap');
+    .main-brand-title {
+        margin: 0.6rem 0 1rem;
+        color: #FFFFFF;
+        font-family: "Orbitron", "Rajdhani", sans-serif;
+        font-size: clamp(1.35rem, 4.2vw, 2.8rem);
+        font-weight: 900;
+        letter-spacing: 3px;
+        line-height: 1.15;
+        text-align: center;
+        white-space: nowrap;
+        background: linear-gradient(
+            90deg,
+            #F59E0B 0%,
+            #FDE047 30%,
+            #FFFFFF 52%,
+            #10B981 100%
+        );
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        filter:
+            drop-shadow(0px 4px 6px rgba(0, 0, 0, 0.85))
+            drop-shadow(0px 0px 12px rgba(16, 185, 129, 0.45));
+    }
+    </style>
+    <h1 class="main-brand-title" role="heading" aria-level="1">
+        İHTİYAR BET ANALİZ
+    </h1>
+    """,
+    unsafe_allow_html=True,
+)
 yetki = st.session_state.get("yetki")
 if yetki == "admin":
     if st.session_state.get("match_view_mode") not in VIEW_OPTIONS:
