@@ -1163,18 +1163,105 @@ st.set_page_config(
     initial_sidebar_state="auto",
 )
 
+st.markdown(
+    """
+    <style>
+    :root {
+        --panel-cover-image: url("__COVER_DATA_URI__");
+    }
+    .stApp {
+        position: relative;
+        isolation: isolate;
+        background: #0B0F19;
+    }
+    [data-testid="stAppViewContainer"] {
+        background: transparent !important;
+    }
+    .stApp::before {
+        position: fixed;
+        z-index: 0;
+        inset: 0;
+        background:
+            linear-gradient(rgba(10, 14, 23, 0.68), rgba(10, 14, 23, 0.78)),
+            var(--panel-cover-image);
+        background-size: cover;
+        background-position: center center;
+        background-repeat: no-repeat;
+        background-attachment: fixed;
+        content: "";
+        pointer-events: none;
+    }
+    .stApp > header, .stApp > div[data-testid="stAppViewContainer"] {
+        position: relative;
+        z-index: 1;
+    }
+    [data-testid="stHeader"] {
+        background: transparent !important;
+    }
+    [data-testid="stSidebar"] {
+        background: rgba(11, 15, 25, 0.88) !important;
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+    }
+    .st-key-login-card {
+        margin-top: 20vh;
+        padding: 1.5rem;
+        border: 1px solid rgba(16, 185, 129, 0.55);
+        border-radius: 18px;
+        background: rgba(10, 14, 23, 0.85);
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+    }
+    input, textarea, [data-baseweb="input"] input {
+        border: 1px solid #10B981 !important;
+        background-color: #0F172A !important;
+        color: #FFFFFF !important;
+        -webkit-text-fill-color: #FFFFFF !important;
+    }
+    [data-baseweb="input"] > div,
+    [data-testid="stDateInput"] [data-baseweb="input"] > div {
+        border: 1px solid #10B981 !important;
+        background-color: #0F172A !important;
+    }
+    label, [data-testid="stWidgetLabel"],
+    [data-testid="stWidgetLabel"] p {
+        color: #F8FAFC !important;
+    }
+    input::placeholder, textarea::placeholder {
+        color: #CBD5E1 !important;
+        -webkit-text-fill-color: #CBD5E1 !important;
+    }
+    [data-testid="stAlert"],
+    [data-testid="stAlert"] [data-baseweb="notification"] {
+        background-color: rgba(17, 24, 39, 0.85) !important;
+        color: #F8FAFC !important;
+    }
+    [data-testid="stAlert"] [data-testid="stMarkdownContainer"],
+    [data-testid="stAlert"] p,
+    [data-testid="stAlert"] svg {
+        color: #F8FAFC !important;
+    }
+    </style>
+    """.replace("__COVER_DATA_URI__", COVER_DATA_URI),
+    unsafe_allow_html=True,
+)
+
 if "yetki" not in st.session_state:
-    giris_parolasi = st.text_input("Giriş Parolası", type="password")
-    if st.button("Giriş Yap"):
-        entered_password = giris_parolasi.strip().lower()
-        if entered_password == "ihtiyarpeek":
-            st.session_state["yetki"] = "user"
-            st.rerun()
-        elif entered_password == "do258025":
-            st.session_state["yetki"] = "admin"
-            st.rerun()
-        else:
-            st.error("Hatalı parola!")
+    login_columns = st.columns([1, 1.2, 1])
+    with login_columns[1]:
+        with st.container(key="login-card"):
+            giris_parolasi = st.text_input("Giriş Parolası", type="password")
+            if st.button("Giriş Yap"):
+                entered_password = giris_parolasi.strip().lower()
+                if entered_password == "ihtiyarpeek":
+                    st.session_state["yetki"] = "user"
+                    st.rerun()
+                elif entered_password == "do258025":
+                    st.session_state["yetki"] = "admin"
+                    st.rerun()
+                else:
+                    st.error("Hatalı parola!")
     st.stop()
 
 if "manuel_kupon" not in st.session_state:
@@ -1221,7 +1308,6 @@ st.markdown(
         --panel-muted: #9AA8BF;
         --panel-green: #10B981;
         --panel-cyan: #38BDF8;
-        --panel-cover-image: url("__COVER_DATA_URI__");
     }
     .stApp, [data-testid="stAppViewContainer"] {
         color: var(--panel-text);
@@ -1266,8 +1352,11 @@ st.markdown(
         color: #F7FAFF;
         letter-spacing: -0.02em;
     }
-    [data-testid="stCaptionContainer"], [data-testid="stWidgetLabel"] {
+    [data-testid="stCaptionContainer"] {
         color: var(--panel-muted);
+    }
+    [data-testid="stWidgetLabel"], [data-testid="stWidgetLabel"] p, label {
+        color: #F8FAFC !important;
     }
     [data-testid="stMetric"] {
         background: rgba(17, 24, 39, 0.82);
@@ -1321,11 +1410,25 @@ st.markdown(
         color: #F7FAFF;
         transform: translateY(-1px);
     }
-    [data-baseweb="select"] > div, [data-baseweb="input"] > div,
-    [data-testid="stDateInput"] input {
+    [data-baseweb="select"] > div {
         border-color: #34415D;
         background: #1A2236;
         color: var(--panel-text);
+    }
+    input, textarea, [data-baseweb="input"] input {
+        border: 1px solid #10B981 !important;
+        background-color: #0F172A !important;
+        color: #FFFFFF !important;
+        -webkit-text-fill-color: #FFFFFF !important;
+    }
+    [data-baseweb="input"] > div,
+    [data-testid="stDateInput"] [data-baseweb="input"] > div {
+        border: 1px solid #10B981 !important;
+        background-color: #0F172A !important;
+    }
+    input::placeholder, textarea::placeholder {
+        color: #CBD5E1 !important;
+        -webkit-text-fill-color: #CBD5E1 !important;
     }
     [data-testid="stAlert"] {
         background-color: rgba(17, 24, 39, 0.85) !important;
@@ -1687,7 +1790,7 @@ st.markdown(
         }
     }
     </style>
-    """.replace("__COVER_DATA_URI__", COVER_DATA_URI),
+    """,
     unsafe_allow_html=True,
 )
 
