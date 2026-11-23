@@ -85,6 +85,11 @@ CARD_COUPON_OPTIONS = [
     ("KG Var", "KG_Var_%", None),
     ("2.5 Üst & KG Var", JOINT_OVER_25_BOTH_SCORE_COLUMN, None),
 ]
+AUTO_RISK_PROFILES = {
+    "Düşük Risk: 1.20 - 1.50 Oran": "low",
+    "Orta Risk: 1.50 - 2.00 Oran": "medium",
+    "Yüksek Risk: 2.00+ Oran": "high",
+}
 LEAGUE_NAMES = {
     "TSL": "Türkiye Süper Ligi",
     "T1L": "Türkiye 1. Ligi",
@@ -545,10 +550,11 @@ def render_match_details(match):
         )
 
 
-def upsert_manual_coupon_selection(
-    match, selection, probability, odds_column, market_match
-):
-    model_probability = float(probability) * 100
+def make_coupon_entry(match, selection, probability, odds_column, market_match):
+    try:
+        model_probability = float(probability) * 100
+    except (TypeError, ValueError):
+        return None
     if not math.isfinite(model_probability) or not 0 <= model_probability <= 100:
         return None
 
@@ -571,8 +577,21 @@ def upsert_manual_coupon_selection(
         "Model Olasılığı %": model_probability,
         "Piyasa Oranı": market_price,
     }
+
+    return entry
+
+
+def upsert_manual_coupon_selection(
+    match, selection, probability, odds_column, market_match
+):
+    entry = make_coupon_entry(
+        match, selection, probability, odds_column, market_match
+    )
+    if entry is None:
+        return None
+
     coupon = st.session_state["manuel_kupon"]
-    identity = (match_name, league, match_date)
+    identity = (entry["Maç Adı"], entry["Lig"], entry["Tarih"])
     existing_index = next(
         (
             index
@@ -592,6 +611,111 @@ def upsert_manual_coupon_selection(
 
     coupon[existing_index] = entry
     return "güncellendi"
+
+
+def calculate_coupon_totals(entries):
+    if not entries:
+        return None, None
+
+    probabilities = []
+    prices = []
+    probabilities_complete = True
+    prices_complete = True
+    for entry in entries:
+        try:
+            probability = float(entry["Model Olasılığı %"])
+        except (KeyError, TypeError, ValueError):
+            probabilities_complete = False
+        else:
+            if math.isfinite(probability) and 0 <= probability <= 100:
+                probabilities.append(probability / 100)
+            else:
+                probabilities_complete = False
+
+        try:
+            price = float(entry.get("Piyasa Oranı"))
+        except (TypeError, ValueError):
+            prices_complete = False
+        else:
+            if math.isfinite(price) and price > 0:
+                prices.append(price)
+            else:
+                prices_complete = False
+
+    combined_probability = (
+        math.prod(probabilities)
+        * 100
+        if probabilities_complete and len(probabilities) == len(entries)
+        else None
+    )
+    total_odds = (
+        math.prod(prices)
+        if prices_complete and len(prices) == len(entries)
+        else None
+    )
+    return total_odds, combined_probability
+
+
+def build_auto_combination(matches, market_odds, match_count, risk_profile):
+    risk_level = AUTO_RISK_PROFILES[risk_profile]
+    candidates = []
+    for _, match in matches.iterrows():
+        market_match, _ = find_market_odds(match, market_odds)
+        if market_match is None:
+            continue
+
+        match_candidates = []
+        for selection, probability_column, odds_column in CARD_COUPON_OPTIONS:
+            if odds_column is None:
+                continue
+            try:
+                probability = float(match.get(probability_column))
+            except (TypeError, ValueError):
+                continue
+            if not math.isfinite(probability) or not 0 <= probability <= 1:
+                continue
+
+            price = pd.to_numeric(
+                pd.Series([market_match.get(odds_column)]), errors="coerce"
+            ).iloc[0]
+            if pd.isna(price) or not math.isfinite(float(price)):
+                continue
+            price = float(price)
+            if risk_level == "low":
+                in_range = 1.20 <= price <= 1.50
+            elif risk_level == "medium":
+                in_range = 1.50 < price <= 2.00
+            else:
+                in_range = price > 2.00
+            if not in_range:
+                continue
+
+            entry = make_coupon_entry(
+                match, selection, probability, odds_column, market_match
+            )
+            if entry is not None:
+                match_candidates.append(entry)
+
+        if match_candidates:
+            candidates.append(
+                max(
+                    match_candidates,
+                    key=lambda entry: (
+                        entry["Model Olasılığı %"],
+                        -entry["Piyasa Oranı"],
+                    ),
+                )
+            )
+
+    candidates.sort(
+        key=lambda entry: (
+            -entry["Model Olasılığı %"],
+            entry["Piyasa Oranı"],
+            entry["Tarih"],
+            entry["Maç Adı"],
+        )
+    )
+    return candidates[: max(1, min(20, int(match_count)))]
 
 
 def render_match_cards(matches, market_odds, key_prefix):
@@ -1055,6 +1179,8 @@ if "yetki" not in st.session_state:
 
 if "manuel_kupon" not in st.session_state:
     st.session_state["manuel_kupon"] = []
+if "otomatik_kupon" not in st.session_state:
+    st.session_state["otomatik_kupon"] = []
 
 st.iframe(
     """
@@ -1202,8 +1328,18 @@ st.markdown(
         color: var(--panel-text);
     }
     [data-testid="stAlert"] {
+        background-color: rgba(17, 24, 39, 0.85) !important;
         border: 1px solid var(--panel-border);
         border-radius: 12px;
+        color: #F8FAFC !important;
+    }
+    [data-testid="stAlert"] [data-baseweb="notification"] {
+        background-color: rgba(17, 24, 39, 0.85) !important;
+    }
+    [data-testid="stAlert"] [data-testid="stMarkdownContainer"],
+    [data-testid="stAlert"] p,
+    [data-testid="stAlert"] svg {
+        color: #F8FAFC !important;
     }
     .match-card-list {
         display: grid;
@@ -2063,54 +2199,95 @@ with comparison_tab:
                     render_market_difference_cards(difference_table)
 
 with coupon_tab:
+    st.subheader("Otomatik Kombinasyon Oluşturucu")
+    st.caption(
+        f"Maçlar yukarıdaki “{date_filter}” tarih filtresine göre seçilir. "
+        "Her maç için risk aralığındaki piyasa oranları arasından model "
+        "olasılığı en yüksek tercih alınır."
+    )
+    auto_controls = st.columns([1, 1.7, 1.4])
+    auto_match_count = auto_controls[0].slider(
+        "Maç sayısı",
+        min_value=1,
+        max_value=20,
+        value=5,
+        step=1,
+        key="auto_coupon_match_count",
+    )
+    auto_risk_profile = auto_controls[1].selectbox(
+        "Risk profili",
+        options=list(AUTO_RISK_PROFILES),
+        key="auto_coupon_risk_profile",
+    )
+    if auto_controls[2].button(
+        "Otomatik Kombinasyon Oluştur",
+        type="primary",
+        width="stretch",
+        key="generate-auto-combination",
+    ):
+        st.session_state["otomatik_kupon"] = build_auto_combination(
+            filtered_upcoming,
+            market_odds,
+            auto_match_count,
+            auto_risk_profile,
+        )
+        st.session_state["otomatik_kupon_requested"] = auto_match_count
+        st.session_state["otomatik_kupon_generated"] = True
+        if st.session_state["otomatik_kupon"]:
+            st.toast(
+                f"{len(st.session_state['otomatik_kupon'])} maçlık kombinasyon oluşturuldu.",
+                icon="✅",
+            )
+
+    automatic_coupon = st.session_state["otomatik_kupon"]
+    if st.session_state.get("otomatik_kupon_generated", False):
+        requested_count = st.session_state["otomatik_kupon_requested"]
+        if not automatic_coupon:
+            st.warning(
+                "Seçilen tarih aralığı ve risk profiline uygun oranlı maç bulunamadı."
+            )
+        else:
+            st.caption(
+                f"{requested_count} maç istendi; "
+                f"{len(automatic_coupon)} uygun maç eklendi."
+            )
+            for entry in automatic_coupon:
+                price = entry.get("Piyasa Oranı")
+                st.markdown(
+                    f"**{escape(str(entry['Maç Adı']))}** · "
+                    f"{escape(str(entry['Lig']))} · "
+                    f"{escape(str(entry['Tarih']))}<br>"
+                    f"{escape(str(entry['Seçilen Tercih']))} · "
+                    f"Model: {float(entry['Model Olasılığı %']):.1f}% · "
+                    f"Piyasa oranı: {float(price):.2f}",
+                    unsafe_allow_html=True,
+                )
+            auto_total_odds, auto_combined_probability = calculate_coupon_totals(
+                automatic_coupon
+            )
+            auto_totals = st.columns(2)
+            auto_totals[0].metric(
+                "Otomatik kombinasyon oranı",
+                f"{auto_total_odds:.2f}" if auto_total_odds is not None else "—",
+            )
+            auto_totals[1].metric(
+                "Otomatik bileşik olasılık",
+                f"{auto_combined_probability:.2f}%"
+                if auto_combined_probability is not None
+                else "—",
+            )
+
+    st.divider()
     st.subheader("Seçtiğim Maçlar (Manuel Liste)")
     st.caption(
         "Bileşik olasılık maçların bağımsız olduğu varsayımıyla hesaplanır. "
         "Toplam oran yalnızca tüm seçimlerde piyasa oranı varsa gösterilir."
     )
     coupon = st.session_state["manuel_kupon"]
+    total_odds, combined_probability = calculate_coupon_totals(coupon)
     if not coupon:
         st.info("Henüz manuel kupona maç eklenmedi.")
-        combined_probability = None
-        total_odds = None
     else:
-        model_probabilities = []
-        market_prices = []
-        complete_probabilities = True
-        complete_market_prices = True
-        for entry in coupon:
-            try:
-                probability = float(entry["Model Olasılığı %"])
-            except (KeyError, TypeError, ValueError):
-                complete_probabilities = False
-            else:
-                if math.isfinite(probability) and 0 <= probability <= 100:
-                    model_probabilities.append(probability / 100)
-                else:
-                    complete_probabilities = False
-
-            price = entry.get("Piyasa Oranı")
-            try:
-                price = float(price)
-            except (TypeError, ValueError):
-                complete_market_prices = False
-            else:
-                if math.isfinite(price) and price > 0:
-                    market_prices.append(price)
-                else:
-                    complete_market_prices = False
-
-        combined_probability = (
-            math.prod(model_probabilities) * 100
-            if complete_probabilities and len(model_probabilities) == len(coupon)
-            else None
-        )
-        total_odds = (
-            math.prod(market_prices)
-            if complete_market_prices and len(market_prices) == len(coupon)
-            else None
-        )
-
         for index, entry in enumerate(coupon):
             item_columns = st.columns([8, 1])
             with item_columns[0]:
