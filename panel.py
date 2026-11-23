@@ -63,7 +63,7 @@ POISSON_PERCENT_COLUMNS = [
     "KG_Var_%",
     JOINT_OVER_25_BOTH_SCORE_COLUMN,
 ]
-VIEW_OPTIONS = ["Otomatik", "Mobil Görünüm", "Masaüstü Görünümü"]
+VIEW_OPTIONS = ["Mobil Kartlar", "Masaüstü Tablo"]
 DATE_FILTER_OPTIONS = [
     "Tümü",
     "Bugün",
@@ -1501,6 +1501,39 @@ st.iframe(
 )
 
 st.title("İ H T İ Y A R Maç Analiz Paneli")
+yetki = st.session_state.get("yetki")
+if yetki == "admin":
+    if st.session_state.get("match_view_mode") not in VIEW_OPTIONS:
+        st.session_state["match_view_mode"] = "Mobil Kartlar"
+    with st.container(border=True):
+        admin_controls = st.columns([1.4, 2, 0.8])
+        if admin_controls[0].button(
+            "🔄 Verileri Şimdi Güncelle",
+            type="primary",
+            width="stretch",
+            key="run-data-update",
+        ):
+            if run_update_pipeline():
+                st.cache_data.clear()
+                st.session_state["data_update_success"] = True
+                st.rerun()
+        view_mode = admin_controls[1].radio(
+            "Görünüm",
+            options=VIEW_OPTIONS,
+            horizontal=True,
+            key="match_view_mode",
+        )
+        if admin_controls[2].button("Çıkış Yap", key="admin-logout"):
+            st.session_state.pop("yetki", None)
+            st.session_state.pop("match_view_mode", None)
+            st.session_state.pop("data_update_success", None)
+            st.rerun()
+    if st.session_state.pop("data_update_success", False):
+        st.success("Veriler, rapor ve grafik güncellendi.")
+else:
+    view_mode = "Mobil Kartlar"
+    st.session_state["match_view_mode"] = view_mode
+
 st.caption(
     "Lig verileri, istatistiksel etiketler ve 0–6 gol Poisson model olasılıkları."
 )
@@ -1544,13 +1577,7 @@ standings = report["Puan_Durumu"]
 upcoming = report["Yaklasan_Maclar"]
 featured = report["One_Cikan_Maclar"]
 
-view_mode = st.radio(
-    "Görünüm",
-    options=VIEW_OPTIONS,
-    horizontal=True,
-    key="match_view_mode",
-)
-if view_mode == "Mobil Görünüm":
+if view_mode == "Mobil Kartlar":
     st.markdown(
         """
         <style>
@@ -1561,7 +1588,7 @@ if view_mode == "Mobil Görünüm":
         """,
         unsafe_allow_html=True,
     )
-elif view_mode == "Masaüstü Görünümü":
+elif view_mode == "Masaüstü Tablo":
     st.markdown(
         """
         <style>
@@ -1989,18 +2016,9 @@ with leaders_tab:
     st.subheader("İstatistik Liderleri")
     render_leaderboards(league_summary, team_statistics, match_data_error)
 
-if st.session_state.get("yetki") == "admin":
+if st.session_state.get("yetki") == "user":
     st.divider()
-    if st.button(
-        "Verileri Şimdi Güncelle",
-        type="primary",
-        width="stretch",
-        key="run-data-update",
-    ):
-        if run_update_pipeline():
-            st.cache_data.clear()
-            st.session_state["data_update_success"] = True
-            st.rerun()
-
-    if st.session_state.pop("data_update_success", False):
-        st.success("Veriler, rapor ve grafik güncellendi.")
+    if st.button("Çıkış Yap", key="user-logout"):
+        st.session_state.pop("yetki", None)
+        st.session_state.pop("match_view_mode", None)
+        st.rerun()
